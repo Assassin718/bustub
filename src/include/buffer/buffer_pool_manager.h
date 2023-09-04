@@ -31,6 +31,8 @@ namespace bustub {
  */
 class BufferPoolManager {
  public:
+  using LockGuard = std::lock_guard<std::mutex>;
+
   /**
    * @brief Creates a new BufferPoolManager.
    * @param pool_size the size of the buffer pool
@@ -208,5 +210,6 @@ class BufferPoolManager {
   }
 
   // TODO(student): You may add additional private members and helper functions
+  auto GetFreeFrameLF(frame_id_t* frame_id) -> bool;
 };
 }  // namespace bustub
