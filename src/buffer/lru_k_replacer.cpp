@@ -112,6 +112,35 @@ void LRUKReplacer::SetEvictable(frame_id_t frame_id, bool set_evictable) {
   }
 }
 
+void LRUKReplacer::RecordAccessAndSetEvictable(frame_id_t frame_id, bool set_evictable, [[maybe_unused]] AccessType access_type) {
+  {
+    LockGuard lock_guard(latch_);
+    // 如果是新的frame_id，则新建一个entry
+    if (node_store_.find(frame_id) == node_store_.end()) {
+      node_list_less_k_.emplace_front(k_, frame_id, true);
+      auto iter = node_list_less_k_.begin();
+      iter->AddHistory(current_timestamp_++);
+      node_store_[frame_id] = iter;
+      ++curr_size_;
+      iter->SetEvictable(set_evictable);
+    // 否则更新access time
+    } else {
+      auto iter = node_store_[frame_id];
+      if (iter->GetHistorySize() < k_ - 1) {
+        node_list_less_k_.splice(node_list_less_k_.begin(), node_list_less_k_, iter);
+      } else if (iter->GetHistorySize() == k_ - 1) {
+        node_list_more_k_.splice(node_list_more_k_.end(), node_list_less_k_, iter); 
+      } 
+      iter->AddHistory(current_timestamp_++);
+      bool evictable = iter->GetEvictable();
+      iter->SetEvictable(set_evictable);
+      if (evictable ^ set_evictable) {
+        curr_size_ = set_evictable ? curr_size_ + 1 : curr_size_ - 1;
+      }
+    }
+  }
+}
+
 void LRUKReplacer::Remove(frame_id_t frame_id) {
   {
     LockGuard lock_guard(latch_);

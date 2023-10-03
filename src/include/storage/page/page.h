@@ -1,3 +1,11 @@
+/*
+ * @Author: ghost 13038089398@163.com
+ * @Date: 2023-09-06 22:17:58
+ * @LastEditors: ghost 13038089398@163.com
+ * @LastEditTime: 2023-09-06 22:17:58
+ * @FilePath: /cmu15445/src/include/storage/page/page.h
+ * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
+ */
 //===----------------------------------------------------------------------===//
 //
 //                         BusTub
@@ -40,7 +48,7 @@ class Page {
   ~Page() { delete[] data_; }
 
   /** @return the actual data contained within this page */
-  inline auto GetData() -> char * { return data_; }
+  inline auto GetData() -> char * { return data_ + SIZE_PAGE_HEADER; }
 
   /** @return the page id of this page */
   inline auto GetPageId() -> page_id_t { return page_id_; }

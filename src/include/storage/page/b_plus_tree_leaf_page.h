@@ -1,3 +1,11 @@
+/*
+ * @Author: ghost 13038089398@163.com
+ * @Date: 2023-09-04 22:33:46
+ * @LastEditors: ghost 13038089398@163.com
+ * @LastEditTime: 2023-10-02 12:09:37
+ * @FilePath: /cmu15445/src/include/storage/page/b_plus_tree_leaf_page.h
+ * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
+ */
 //===----------------------------------------------------------------------===//
 //
 //                         CMU-DB Project (15-445/645)
@@ -58,6 +66,9 @@ class BPlusTreeLeafPage : public BPlusTreePage {
   auto GetNextPageId() const -> page_id_t;
   void SetNextPageId(page_id_t next_page_id);
   auto KeyAt(int index) const -> KeyType;
+  auto ValueAt(int index) const ->ValueType;
+  auto InsertAt(const KeyType& key, const ValueType& value, int index) -> bool;
+  void MoveTo(BPlusTreeLeafPage<KeyType, ValueType, KeyComparator>* dst, int src_begin, int src_len, int dst_begin);
 
   /**
    * @brief for test only return a string representing all keys in

@@ -75,6 +75,7 @@ class BPlusTree {
   // Insert a key-value pair into this B+ tree.
   auto Insert(const KeyType &key, const ValueType &value, Transaction *txn = nullptr) -> bool;
 
+
   // Remove a key and its value from this B+ tree.
   void Remove(const KeyType &key, Transaction *txn);
 
@@ -140,6 +141,11 @@ class BPlusTree {
    * @return PrintableNode
    */
   auto ToPrintableBPlusTree(page_id_t root_id) -> PrintableBPlusTree;
+
+  // Insert a key-value pair recursively
+  auto InsertRecursively(page_id_t page_id_to_fetch, Context &ctx, const KeyType &key, const ValueType &value, Transaction *txn = nullptr) -> bool;
+  auto UpperBound(const LeafPage* page, const KeyType& key) -> size_t;
+  auto UpperBound(const InternalPage* page, const KeyType& key) -> size_t;
 
   // member variable
   std::string index_name_;

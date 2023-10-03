@@ -41,72 +41,82 @@ BufferPoolManager::~BufferPoolManager() { delete[] pages_; }
 auto BufferPoolManager::NewPage(page_id_t *page_id) -> Page * { 
   // 1.get a frame (no other thread can access this frame)
   // 2.get new page id 
-  frame_id_t fid = -1;
-  page_id_t pid = -1;
+  frame_id_t frame_id = -1;
+  page_id_t page_id_new = -1;
   bool success = false;
   {
     LockGuard guard(latch_);
-    success = GetFreeFrameLF(&fid);
-    if (success) {
-      pid = AllocatePage();
-    }
+    success = GetFreeFrameLF(&frame_id);
   }
-  if (!success || pid == -1) {
-    page_id = nullptr;
+  if (success) {
+    page_id_new = AllocatePage();
+  }
+  if (!success || page_id_new == -1) {
+    *page_id = -1;
     return nullptr; 
   }
-  BUSTUB_ASSERT(fid != -1, "error, allocated frame id is -1");
-  BUSTUB_ASSERT(pid != -1, "error, allocated page id is -1");
+  BUSTUB_ASSERT(frame_id != -1, "error, allocated frame id is -1");
+  BUSTUB_ASSERT(page_id_new != -1, "error, allocated page id is -1");
 
   // write back dirty page, reset memory and metadata
-  Page* alloc_page = pages_ + fid;
+  Page* alloc_page = pages_ + frame_id;
+  BUSTUB_ASSERT(alloc_page->GetPinCount() == 0, "error, allocated page pin count is not 0");
   if (alloc_page->IsDirty()) {
     disk_manager_->WritePage(alloc_page->GetPageId(), alloc_page->GetData());
   }
   alloc_page->ResetMemory();
   // set alloc_page and build map
-  alloc_page->page_id_ = pid;
+  alloc_page->page_id_ = page_id_new;
   alloc_page->pin_count_ = 1;
-  *page_id = pid;
+  alloc_page->is_dirty_ = false;
+
+  *page_id = page_id_new;
+  replacer_->RecordAccessAndSetEvictable(frame_id, false);
   {
     LockGuard guard(latch_);
-    page_table_.insert({pid, fid});
-    replacer_->RecordAccess(fid);
-    replacer_->SetEvictable(fid, false);
+    page_table_.insert({page_id_new, frame_id});
   }
   return alloc_page;
 }
 
 auto BufferPoolManager::FetchPage(page_id_t page_id, [[maybe_unused]] AccessType access_type) -> Page * {
   // find in page_table_
-  frame_id_t fid = -1;
+  frame_id_t frame_id = -1;
   bool success = false;
+  Page* alloc_page = nullptr;
   {
     LockGuard guard(latch_);
+// if page_id is already in page_table_, just add pin count and return
     auto found = page_table_.find(page_id);
     if (found != page_table_.end()) {
-      return &pages_[found->second];
+      frame_id = found->second;
+      alloc_page = pages_ + frame_id; 
+      ++alloc_page->pin_count_;
+      replacer_->RecordAccessAndSetEvictable(frame_id, false);
+      return alloc_page;
     }
-    success = GetFreeFrameLF(&fid);
+
+// if page_id is not in page_table_, find a free frame to replace
+    success = GetFreeFrameLF(&frame_id);
   }
-  // if not in page_table_, get a free frame to replace
+  // if no free frame, return nullptr
   if (!success) {
-    return nullptr;
+    return alloc_page;
   }
   // write back dirty page, read page_id page
-  Page* alloc_page = pages_ + fid;
+  alloc_page = pages_ + frame_id;
   if (alloc_page->IsDirty()) {
     disk_manager_->WritePage(alloc_page->GetPageId(), alloc_page->GetData());
   }
   disk_manager_->ReadPage(page_id, alloc_page->GetData());
   // set alloc_page and build map
   alloc_page->page_id_ = page_id;
-  ++alloc_page->pin_count_;
+  alloc_page->pin_count_ = 1;
+  alloc_page->is_dirty_ = false;
+  replacer_->RecordAccessAndSetEvictable(frame_id, false);
   {
     LockGuard guard(latch_);
-    page_table_.insert({page_id, fid});
-    replacer_->RecordAccess(fid);
-    replacer_->SetEvictable(fid, false);
+    page_table_.insert({page_id, frame_id});
   }
   return alloc_page;
 }
@@ -118,18 +128,16 @@ auto BufferPoolManager::UnpinPage(page_id_t page_id, bool is_dirty, [[maybe_unus
     if (found == page_table_.end()) {
       return false;
     }
-    frame_id_t fid = found->second;
-    Page* page = &pages_[fid];
+    frame_id_t frame_id = found->second;
+    Page* page = pages_ + frame_id;
     if (page->GetPinCount() == 0) {
       return false;
     }
     page->pin_count_ -= 1;
     if (page->GetPinCount() == 0) {
-      replacer_->SetEvictable(fid, true);
+      replacer_->SetEvictable(frame_id, true);
     }
-    if (is_dirty) {
-      page->is_dirty_ = true;
-    }
+    page->is_dirty_ = is_dirty;
   }
   return true;
 }
@@ -141,7 +149,8 @@ auto BufferPoolManager::FlushPage(page_id_t page_id) -> bool {
     if (found == page_table_.end()) {
       return false;
     }
-    disk_manager_->WritePage(page_id, pages_[found->second].GetData());
+    frame_id_t frame_id = found->second;
+    disk_manager_->WritePage(page_id, pages_[frame_id].GetData());
     pages_[found->second].is_dirty_ = false;
     return true; 
   }
@@ -165,29 +174,51 @@ auto BufferPoolManager::DeletePage(page_id_t page_id) -> bool {
     if (found == page_table_.end()) {
       return true;
     }
-    frame_id_t fid = found->second;
-    if (pages_[fid].GetPinCount() > 0) {
+    frame_id_t frame_id = found->second;
+    Page* page = pages_ + frame_id;
+    if (page->GetPinCount() > 0) {
       return false;
     }
+    if (page->IsDirty()) {
+      disk_manager_->WritePage(page_id, page->GetData());
+    }
     page_table_.erase(page_id);
-    replacer_->Remove(fid);
-    free_list_.push_back(fid);
-    pages_[fid].ResetMemory();
-    pages_[fid].pin_count_ = 0;
-    pages_[fid].is_dirty_ = false;
+    replacer_->Remove(frame_id);
+    free_list_.push_back(frame_id);
+    page->ResetMemory();
+    page->pin_count_ = 0;
+    page->is_dirty_ = false;
   }
-  return false; 
+  return true; 
 }
 
 auto BufferPoolManager::AllocatePage() -> page_id_t { return next_page_id_++; }
 
-auto BufferPoolManager::FetchPageBasic(page_id_t page_id) -> BasicPageGuard { return {this, nullptr}; }
+auto BufferPoolManager::FetchPageBasic(page_id_t page_id) -> BasicPageGuard { 
+  Page* page = FetchPage(page_id);
+  BasicPageGuard page_guard(this, page);
+  return page_guard; 
+}
 
-auto BufferPoolManager::FetchPageRead(page_id_t page_id) -> ReadPageGuard { return {this, nullptr}; }
+auto BufferPoolManager::FetchPageRead(page_id_t page_id) -> ReadPageGuard { 
+  Page* page = FetchPage(page_id);
+  ReadPageGuard page_guard(this, page);
+  page->RLatch();
+  return {this, page}; 
+}
 
-auto BufferPoolManager::FetchPageWrite(page_id_t page_id) -> WritePageGuard { return {this, nullptr}; }
+auto BufferPoolManager::FetchPageWrite(page_id_t page_id) -> WritePageGuard { 
+  Page* page = FetchPage(page_id);
+  WritePageGuard page_guard(this, page);
+  page->WLatch();
+  return {this, page}; 
+}
 
-auto BufferPoolManager::NewPageGuarded(page_id_t *page_id) -> BasicPageGuard { return {this, nullptr}; }
+auto BufferPoolManager::NewPageGuarded(page_id_t *page_id) -> BasicPageGuard { 
+  Page* page = NewPage(page_id);
+  BasicPageGuard page_guard(this, page);
+  return {this, page}; 
+}
 
 auto BufferPoolManager::GetFreeFrameLF(frame_id_t* frame_id) -> bool {
   bool success = false;

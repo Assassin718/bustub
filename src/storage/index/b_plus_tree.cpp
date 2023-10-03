@@ -1,5 +1,6 @@
 #include <sstream>
 #include <string>
+#include <algorithm>
 
 #include "common/exception.h"
 #include "common/logger.h"
@@ -22,11 +23,15 @@ BPLUSTREE_TYPE::BPlusTree(std::string name, page_id_t header_page_id, BufferPool
   root_page->root_page_id_ = INVALID_PAGE_ID;
 }
 
-/*
+/* 
  * Helper function to decide whether current b+tree is empty
  */
 INDEX_TEMPLATE_ARGUMENTS
-auto BPLUSTREE_TYPE::IsEmpty() const -> bool { return true; }
+auto BPLUSTREE_TYPE::IsEmpty() const -> bool {
+  ReadPageGuard guard = bpm_->FetchPageRead(header_page_id_);
+  auto root_page = guard.As<BPlusTreeHeaderPage>();
+  return root_page->root_page_id_ == INVALID_PAGE_ID;
+}
 /*****************************************************************************
  * SEARCH
  *****************************************************************************/
@@ -39,7 +44,45 @@ INDEX_TEMPLATE_ARGUMENTS
 auto BPLUSTREE_TYPE::GetValue(const KeyType &key, std::vector<ValueType> *result, Transaction *txn) -> bool {
   // Declaration of context instance.
   Context ctx;
-  (void)ctx;
+  // Get root page id
+  ReadPageGuard header_guard = bpm_->FetchPageRead(header_page_id_);
+  auto header_page = header_guard.As<BPlusTreeHeaderPage>();
+  page_id_t page_id_to_fetch = header_page->root_page_id_;
+  ctx.read_set_.emplace_back(std::move(header_guard));
+  do {
+    // If page_id_to_fetch is invalid, return false
+    if (page_id_to_fetch == INVALID_PAGE_ID) {
+      return false;
+    }
+    // Fetch page and Unlock old pages
+    ReadPageGuard guard = bpm_->FetchPageRead(page_id_to_fetch);
+    while (!ctx.read_set_.empty()) { ctx.read_set_.pop_front(); }
+    // If page is a leaf page
+    auto page = guard.As<BPlusTreePage>();
+    if (page->IsLeafPage()) {
+      auto leaf_page = guard.As<LeafPage>();
+      bool flag = false;
+      // FIXME: use binary search
+      for (int i = 0; i < leaf_page->GetSize(); ++i) {
+        if (comparator_(leaf_page->KeyAt(i), key) == 0) {
+          result->push_back(leaf_page->ValueAt(i));
+          flag = true;
+        }
+      }
+      return flag; 
+    }
+    // Else if page is an internal page
+    auto internal_page = guard.As<InternalPage>();
+    // find the first key greater than *key*
+    int index = 1;
+    while (index < internal_page->GetSize() && 
+          comparator_(internal_page->KeyAt(index), key) <= 0) { 
+      ++index; 
+    }
+    page_id_to_fetch = internal_page->ValueAt(index - 1);
+    // Add this page to read_set
+    ctx.read_set_.emplace_back(std::move(guard));
+  } while (true);
   return false;
 }
 
@@ -57,8 +100,26 @@ INDEX_TEMPLATE_ARGUMENTS
 auto BPLUSTREE_TYPE::Insert(const KeyType &key, const ValueType &value, Transaction *txn) -> bool {
   // Declaration of context instance.
   Context ctx;
-  (void)ctx;
-  return false;
+  // Get root page id
+  WritePageGuard header_guard = bpm_->FetchPageWrite(header_page_id_);
+  auto header_page = header_guard.AsMut<BPlusTreeHeaderPage>();
+
+  // If tree is empty, create a new tree
+  if (header_page->root_page_id_ == INVALID_PAGE_ID) {
+    auto root_guard = bpm_->NewPageGuarded(&header_page->root_page_id_);
+    if (root_guard.GetData() == nullptr) {
+      return false;
+    }
+    auto leaf_page = root_guard.AsMut<LeafPage>();
+    leaf_page->Init(leaf_max_size_);
+    leaf_page->InsertAt(key, value, 0);
+    return true;
+  }
+
+  // If the tree is not empty, insert
+  ctx.write_set_.emplace_back(std::move(header_guard));
+  ctx.root_page_id_ = header_page->root_page_id_;
+  return InsertRecursively(header_page->root_page_id_, ctx, key, value);
 }
 
 /*****************************************************************************
@@ -356,6 +417,114 @@ auto BPLUSTREE_TYPE::ToPrintableBPlusTree(page_id_t root_id) -> PrintableBPlusTr
   }
 
   return proot;
+}
+
+
+
+INDEX_TEMPLATE_ARGUMENTS
+auto BPLUSTREE_TYPE::UpperBound(const LeafPage* page, const KeyType& key) -> size_t {
+  int index = 0;
+  while (index < page->GetSize() && comparator_(page->KeyAt(index), key) <= 0) { ++index; }
+  return index;
+}
+
+
+INDEX_TEMPLATE_ARGUMENTS
+auto BPLUSTREE_TYPE::UpperBound(const InternalPage* page, const KeyType& key) -> size_t {
+  int index = 1;
+  while (index < page->GetSize() && comparator_(page->KeyAt(index), key) <= 0) { ++index; }
+  return index;
+}
+
+
+INDEX_TEMPLATE_ARGUMENTS
+auto BPLUSTREE_TYPE::InsertRecursively(page_id_t page_id_to_fetch, Context &ctx, const KeyType &key, const ValueType &value, Transaction *txn) -> bool {
+  // fetch cur_page
+  if (page_id_to_fetch == INVALID_PAGE_ID) {
+    return false;
+  }
+  WritePageGuard cur_guard = bpm_->FetchPageWrite(page_id_to_fetch);
+  auto cur_page = cur_guard.AsMut<BPlusTreePage>();
+  // if header_page is not going to split, release locked pages before
+  if (cur_page->GetSize() < cur_page->GetMaxSize() - 1) {
+    while (!ctx.write_set_.empty()) { ctx.write_set_.pop_front(); }
+  }
+
+  // if cur_page is leaf_page, insert
+  bool success = false;
+  int index = -1;
+  if (cur_page->IsLeafPage()) {
+    auto leaf_page = cur_guard.AsMut<LeafPage>();
+    index = UpperBound(leaf_page, key);
+    success = leaf_page->InsertAt(key, value, index);
+  // else if header_page is internal_page, walk through
+  } else {
+    auto internal_page = cur_guard.AsMut<InternalPage>();
+    index = UpperBound(internal_page, key);
+    ctx.write_set_.emplace_back(std::move(cur_guard));
+    success = InsertRecursively(internal_page->ValueAt(index - 1), ctx, key, value);
+    cur_guard = std::move(ctx.write_set_.back());
+    ctx.write_set_.pop_back();
+  }
+
+  // if cur_page is not full, return
+  if (cur_page->GetSize() < cur_page->GetMaxSize()) {
+    return success;
+  }
+
+  // else if cur_page is full: 1.split 2.update father
+  // allocate a new page, for split
+  page_id_t new_split_page_id = -1;
+  auto new_split_page_guard = bpm_->NewPageGuarded(&new_split_page_id);
+  BUSTUB_ASSERT(new_split_page_id != -1, "allocate error at split");
+  // allocate a new page, for new root (if cur page is root page)
+  page_id_t new_root_page_id = -1;
+  BasicPageGuard new_root_guard;
+  InternalPage* new_root_page = nullptr;
+  if (ctx.IsRootPage(cur_guard.PageId())) {
+    new_root_guard = bpm_->NewPageGuarded(&new_root_page_id);
+    BUSTUB_ASSERT(new_root_page_id != -1, "allocate error at split");
+    new_root_page = new_root_guard.AsMut<InternalPage>();
+  }
+  if (cur_page->IsLeafPage()) {
+    // split
+    auto cur_leaf_page = cur_guard.AsMut<LeafPage>();
+    auto new_leaf_page = new_split_page_guard.AsMut<LeafPage>();
+    int start = cur_leaf_page->GetSize() >> 1;
+    int len = cur_leaf_page->GetSize() - start;
+    cur_leaf_page->MoveTo(new_leaf_page, start, len, 0);
+    // update father
+    if (ctx.IsRootPage(cur_guard.PageId())) {
+      auto& header_page_guard = ctx.write_set_.back();
+      new_root_page->SetValueAt(cur_guard.PageId(), 0);
+      new_root_page->InsertAt(new_leaf_page->KeyAt(0), new_split_page_id, 1);
+      header_page_guard.AsMut<BPlusTreeHeaderPage>()->root_page_id_ = new_root_page_id;
+    } else {
+      auto& father_page_guard = ctx.write_set_.back();
+      auto father_page = father_page_guard.AsMut<InternalPage>();
+      int index = UpperBound(father_page, new_leaf_page->KeyAt(0));
+      father_page->InsertAt(new_leaf_page->KeyAt(0), new_split_page_id, index);
+    }
+  } else {
+    // split
+    auto cur_internal_page = cur_guard.AsMut<InternalPage>();
+    auto new_internal_page = new_split_page_guard.AsMut<InternalPage>();
+    int start = cur_internal_page->GetSize() >> 1;
+    int len = cur_internal_page->GetSize() - start;
+    cur_internal_page->MoveTo(new_internal_page, start, len, 0);
+    // update father
+    if (ctx.IsRootPage(cur_guard.PageId())) {
+      auto& header_page_guard = ctx.write_set_.back();
+      new_root_page->SetValueAt(cur_guard.PageId(), 0);
+      new_root_page->InsertAt(new_internal_page->KeyAt(0), new_split_page_id, 1);
+      header_page_guard.AsMut<BPlusTreeHeaderPage>()->root_page_id_ = new_root_page_id;
+    } else {
+      auto& father_page_guard = ctx.write_set_.back();
+      auto father_page = father_page_guard.AsMut<InternalPage>();
+      int index = UpperBound(father_page, new_internal_page->KeyAt(0));
+      father_page->InsertAt(new_internal_page->KeyAt(0), new_split_page_id, index);
+    }
+  }
 }
 
 template class BPlusTree<GenericKey<4>, RID, GenericComparator<4>>;

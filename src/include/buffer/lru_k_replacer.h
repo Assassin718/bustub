@@ -158,6 +158,8 @@ class LRUKReplacer {
    */
   auto Size() -> size_t;
 
+  void RecordAccessAndSetEvictable(frame_id_t frame_id, bool set_evictable, AccessType access_type = AccessType::Unknown);
+
  private:
   // TODO(student): implement me! You can replace these member variables as you like.
   // Remove maybe_unused if you start using them.

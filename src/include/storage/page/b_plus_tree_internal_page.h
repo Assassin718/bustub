@@ -1,3 +1,11 @@
+/*
+ * @Author: ghost 13038089398@163.com
+ * @Date: 2023-09-27 13:46:37
+ * @LastEditors: ghost 13038089398@163.com
+ * @LastEditTime: 2023-10-02 22:50:58
+ * @FilePath: /cmu15445/mnt/d/project/cmu15445/src/include/storage/page/b_plus_tree_internal_page.h
+ * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
+ */
 //===----------------------------------------------------------------------===//
 //
 //                         CMU-DB Project (15-445/645)
@@ -55,24 +63,18 @@ class BPlusTreeInternalPage : public BPlusTreePage {
 
   /**
    *
-   * @param index The index of the key to set. Index must be non-zero.
-   * @param key The new value for key
-   */
-  void SetKeyAt(int index, const KeyType &key);
-
-  /**
-   *
-   * @param value the value to search for
-   */
-  auto ValueIndex(const ValueType &value) const -> int;
-
-  /**
-   *
    * @param index the index
    * @return the value at the index
    */
   auto ValueAt(int index) const -> ValueType;
 
+  auto InsertAt(const KeyType& key, const ValueType& value, int index) -> bool;
+
+  void SetKeyAt(const KeyType& key, int index); 
+
+  void SetValueAt(const ValueType& value, int index);
+
+  void MoveTo(BPlusTreeInternalPage<KeyType, ValueType, KeyComparator>* dst, int src_begin, int src_len, int dst_begin);
   /**
    * @brief For test only, return a string representing all keys in
    * this internal page, formatted as "(key1,key2,key3,...)"
@@ -91,7 +93,6 @@ class BPlusTreeInternalPage : public BPlusTreePage {
       } else {
         kstr.append(",");
       }
-
       kstr.append(std::to_string(key.ToString()));
     }
     kstr.append(")");

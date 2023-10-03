@@ -1,3 +1,11 @@
+/*
+ * @Author: ghost 13038089398@163.com
+ * @Date: 2023-09-06 10:04:14
+ * @LastEditors: ghost 13038089398@163.com
+ * @LastEditTime: 2023-09-27 14:00:46
+ * @FilePath: /cmu15445/src/include/storage/page/b_plus_tree_page.h
+ * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
+ */
 //===----------------------------------------------------------------------===//
 //
 //                         CMU-DB Project (15-445/645)
@@ -58,9 +66,9 @@ class BPlusTreePage {
 
  private:
   // member variable, attributes that both internal and leaf page share
-  IndexPageType page_type_ __attribute__((__unused__));
-  int size_ __attribute__((__unused__));
-  int max_size_ __attribute__((__unused__));
+  IndexPageType page_type_;
+  int size_;
+  int max_size_;
 };
 
 }  // namespace bustub
