@@ -87,6 +87,13 @@ auto B_PLUS_TREE_LEAF_PAGE_TYPE::InsertAt(const KeyType& key, const ValueType& v
   return true;
 }
 
+INDEX_TEMPLATE_ARGUMENTS
+void B_PLUS_TREE_LEAF_PAGE_TYPE::MoveTo(BPlusTreeLeafPage<KeyType, ValueType, KeyComparator>* dst, int src_begin, int src_len, int dst_begin) {
+  for (int i = 0; i < src_len; ++i) {
+    dst->array_[dst_begin++] = array_[src_begin];
+  }
+  IncreaseSize(-src_len);
+}
 
 template class BPlusTreeLeafPage<GenericKey<4>, RID, GenericComparator<4>>;
 template class BPlusTreeLeafPage<GenericKey<8>, RID, GenericComparator<8>>;

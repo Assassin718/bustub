@@ -468,7 +468,7 @@ auto BPLUSTREE_TYPE::InsertRecursively(page_id_t page_id_to_fetch, Context &ctx,
   }
 
   // if cur_page is not full, return
-  if (cur_page->GetSize() < cur_page->GetMaxSize()) {
+  if (cur_page->GetSize() < cur_page->GetMaxSize() || !success) {
     return success;
   }
 
@@ -497,13 +497,13 @@ auto BPLUSTREE_TYPE::InsertRecursively(page_id_t page_id_to_fetch, Context &ctx,
     if (ctx.IsRootPage(cur_guard.PageId())) {
       auto& header_page_guard = ctx.write_set_.back();
       new_root_page->SetValueAt(cur_guard.PageId(), 0);
-      new_root_page->InsertAt(new_leaf_page->KeyAt(0), new_split_page_id, 1);
+      success = new_root_page->InsertAt(new_leaf_page->KeyAt(0), new_split_page_id, 1);
       header_page_guard.AsMut<BPlusTreeHeaderPage>()->root_page_id_ = new_root_page_id;
     } else {
       auto& father_page_guard = ctx.write_set_.back();
       auto father_page = father_page_guard.AsMut<InternalPage>();
       int index = UpperBound(father_page, new_leaf_page->KeyAt(0));
-      father_page->InsertAt(new_leaf_page->KeyAt(0), new_split_page_id, index);
+      success = father_page->InsertAt(new_leaf_page->KeyAt(0), new_split_page_id, index);
     }
   } else {
     // split
@@ -516,15 +516,16 @@ auto BPLUSTREE_TYPE::InsertRecursively(page_id_t page_id_to_fetch, Context &ctx,
     if (ctx.IsRootPage(cur_guard.PageId())) {
       auto& header_page_guard = ctx.write_set_.back();
       new_root_page->SetValueAt(cur_guard.PageId(), 0);
-      new_root_page->InsertAt(new_internal_page->KeyAt(0), new_split_page_id, 1);
+      success = new_root_page->InsertAt(new_internal_page->KeyAt(0), new_split_page_id, 1);
       header_page_guard.AsMut<BPlusTreeHeaderPage>()->root_page_id_ = new_root_page_id;
     } else {
       auto& father_page_guard = ctx.write_set_.back();
       auto father_page = father_page_guard.AsMut<InternalPage>();
       int index = UpperBound(father_page, new_internal_page->KeyAt(0));
-      father_page->InsertAt(new_internal_page->KeyAt(0), new_split_page_id, index);
+      success = father_page->InsertAt(new_internal_page->KeyAt(0), new_split_page_id, index);
     }
   }
+  return success;
 }
 
 template class BPlusTree<GenericKey<4>, RID, GenericComparator<4>>;

@@ -70,6 +70,7 @@ auto B_PLUS_TREE_INTERNAL_PAGE_TYPE::InsertAt(const KeyType& key, const ValueTyp
   array_[index].first = key;
   array_[index].second = value;
   IncreaseSize(1);
+  return true;
 }
 
 INDEX_TEMPLATE_ARGUMENTS
@@ -80,6 +81,14 @@ void B_PLUS_TREE_INTERNAL_PAGE_TYPE::SetKeyAt(const KeyType& key, int index) {
 INDEX_TEMPLATE_ARGUMENTS
 void B_PLUS_TREE_INTERNAL_PAGE_TYPE::SetValueAt(const ValueType& value, int index) {
   array_[index].second = value;
+}
+
+INDEX_TEMPLATE_ARGUMENTS
+void B_PLUS_TREE_INTERNAL_PAGE_TYPE::MoveTo(BPlusTreeInternalPage<KeyType, ValueType, KeyComparator>* dst, int src_begin, int src_len, int dst_begin) {
+  for (int i = 0; i < src_len; ++i) {
+    dst->array_[dst_begin++] = array_[src_begin];
+  }
+  IncreaseSize(-src_len);
 }
 
 // valuetype for internalNode should be page id_t
