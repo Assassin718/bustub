@@ -2,7 +2,7 @@
  * @Author: ghost 13038089398@163.com
  * @Date: 2023-09-27 13:46:37
  * @LastEditors: ghost 13038089398@163.com
- * @LastEditTime: 2023-10-02 22:50:58
+ * @LastEditTime: 2023-10-03 19:45:43
  * @FilePath: /cmu15445/mnt/d/project/cmu15445/src/include/storage/page/b_plus_tree_internal_page.h
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
  */
@@ -74,7 +74,7 @@ class BPlusTreeInternalPage : public BPlusTreePage {
 
   void SetValueAt(const ValueType& value, int index);
 
-  void MoveTo(BPlusTreeInternalPage<KeyType, ValueType, KeyComparator>* dst, int src_begin, int src_len, int dst_begin);
+  void SplitTo(BPlusTreeInternalPage<KeyType, ValueType, KeyComparator>* dst);
   /**
    * @brief For test only, return a string representing all keys in
    * this internal page, formatted as "(key1,key2,key3,...)"

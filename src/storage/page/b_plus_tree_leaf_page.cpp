@@ -2,7 +2,7 @@
  * @Author: ghost 13038089398@163.com
  * @Date: 2023-09-06 11:46:19
  * @LastEditors: ghost 13038089398@163.com
- * @LastEditTime: 2023-10-02 22:49:33
+ * @LastEditTime: 2023-10-03 20:01:08
  * @FilePath: /cmu15445/src/storage/page/b_plus_tree_leaf_page.cpp
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
  */
@@ -88,11 +88,17 @@ auto B_PLUS_TREE_LEAF_PAGE_TYPE::InsertAt(const KeyType& key, const ValueType& v
 }
 
 INDEX_TEMPLATE_ARGUMENTS
-void B_PLUS_TREE_LEAF_PAGE_TYPE::MoveTo(BPlusTreeLeafPage<KeyType, ValueType, KeyComparator>* dst, int src_begin, int src_len, int dst_begin) {
-  for (int i = 0; i < src_len; ++i) {
-    dst->array_[dst_begin++] = array_[src_begin];
+void B_PLUS_TREE_LEAF_PAGE_TYPE::SplitTo(BPlusTreeLeafPage<KeyType, ValueType, KeyComparator>* dst, page_id_t dst_page_id) {
+  int end = GetSize();
+  int start = end >> 1;
+  int dst_begin = 0;
+  for (int i = start; i < end; ++i) {
+    dst->array_[dst_begin++] = array_[i];
   }
-  IncreaseSize(-src_len);
+  SetSize(start);
+  dst->SetSize(dst_begin);
+  dst->SetNextPageId(next_page_id_);
+  next_page_id_ = dst_page_id;
 }
 
 template class BPlusTreeLeafPage<GenericKey<4>, RID, GenericComparator<4>>;

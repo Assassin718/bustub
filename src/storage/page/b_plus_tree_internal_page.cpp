@@ -2,7 +2,7 @@
  * @Author: ghost 13038089398@163.com
  * @Date: 2023-09-06 11:30:35
  * @LastEditors: ghost 13038089398@163.com
- * @LastEditTime: 2023-10-02 22:50:14
+ * @LastEditTime: 2023-10-03 19:50:32
  * @FilePath: /cmu15445/src/storage/page/b_plus_tree_internal_page.cpp
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
  */
@@ -84,11 +84,15 @@ void B_PLUS_TREE_INTERNAL_PAGE_TYPE::SetValueAt(const ValueType& value, int inde
 }
 
 INDEX_TEMPLATE_ARGUMENTS
-void B_PLUS_TREE_INTERNAL_PAGE_TYPE::MoveTo(BPlusTreeInternalPage<KeyType, ValueType, KeyComparator>* dst, int src_begin, int src_len, int dst_begin) {
-  for (int i = 0; i < src_len; ++i) {
-    dst->array_[dst_begin++] = array_[src_begin];
+void B_PLUS_TREE_INTERNAL_PAGE_TYPE::SplitTo(BPlusTreeInternalPage<KeyType, ValueType, KeyComparator>* dst) {
+  int end = GetSize();
+  int start = end >> 1;
+  int dst_begin = 0;
+  for (int i = start; i < end; ++i) {
+    dst->array_[dst_begin++] = array_[i];
   }
-  IncreaseSize(-src_len);
+  SetSize(start);
+  dst->SetSize(dst_begin);
 }
 
 // valuetype for internalNode should be page id_t

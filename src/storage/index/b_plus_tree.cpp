@@ -15,8 +15,8 @@ BPLUSTREE_TYPE::BPlusTree(std::string name, page_id_t header_page_id, BufferPool
     : index_name_(std::move(name)),
       bpm_(buffer_pool_manager),
       comparator_(std::move(comparator)),
-      leaf_max_size_(leaf_max_size),
-      internal_max_size_(internal_max_size),
+      leaf_max_size_(leaf_max_size + 1),
+      internal_max_size_(internal_max_size + 1),
       header_page_id_(header_page_id) {
   WritePageGuard guard = bpm_->FetchPageWrite(header_page_id_);
   auto root_page = guard.AsMut<BPlusTreeHeaderPage>();
@@ -74,11 +74,7 @@ auto BPLUSTREE_TYPE::GetValue(const KeyType &key, std::vector<ValueType> *result
     // Else if page is an internal page
     auto internal_page = guard.As<InternalPage>();
     // find the first key greater than *key*
-    int index = 1;
-    while (index < internal_page->GetSize() && 
-          comparator_(internal_page->KeyAt(index), key) <= 0) { 
-      ++index; 
-    }
+    int index = UpperBound(internal_page, key);
     page_id_to_fetch = internal_page->ValueAt(index - 1);
     // Add this page to read_set
     ctx.read_set_.emplace_back(std::move(guard));
@@ -170,7 +166,11 @@ auto BPLUSTREE_TYPE::End() -> INDEXITERATOR_TYPE { return INDEXITERATOR_TYPE(); 
  * @return Page id of the root of this tree
  */
 INDEX_TEMPLATE_ARGUMENTS
-auto BPLUSTREE_TYPE::GetRootPageId() -> page_id_t { return 0; }
+auto BPLUSTREE_TYPE::GetRootPageId() -> page_id_t { 
+  ReadPageGuard header_guard = bpm_->FetchPageRead(header_page_id_);
+  auto header_page = header_guard.As<BPlusTreeHeaderPage>();
+  return header_page->root_page_id_;
+}
 
 /*****************************************************************************
  * UTILITIES AND DEBUG
@@ -474,25 +474,25 @@ auto BPLUSTREE_TYPE::InsertRecursively(page_id_t page_id_to_fetch, Context &ctx,
 
   // else if cur_page is full: 1.split 2.update father
   // allocate a new page, for split
-  page_id_t new_split_page_id = -1;
+  page_id_t new_split_page_id = INVALID_PAGE_ID;
   auto new_split_page_guard = bpm_->NewPageGuarded(&new_split_page_id);
-  BUSTUB_ASSERT(new_split_page_id != -1, "allocate error at split");
+  BUSTUB_ASSERT(new_split_page_id != INVALID_PAGE_ID, "allocate error at split");
   // allocate a new page, for new root (if cur page is root page)
-  page_id_t new_root_page_id = -1;
+  page_id_t new_root_page_id = INVALID_PAGE_ID;
   BasicPageGuard new_root_guard;
   InternalPage* new_root_page = nullptr;
   if (ctx.IsRootPage(cur_guard.PageId())) {
     new_root_guard = bpm_->NewPageGuarded(&new_root_page_id);
-    BUSTUB_ASSERT(new_root_page_id != -1, "allocate error at split");
+    BUSTUB_ASSERT(new_root_page_id != INVALID_PAGE_ID, "allocate error at split");
     new_root_page = new_root_guard.AsMut<InternalPage>();
+    new_root_page->Init(internal_max_size_);
   }
   if (cur_page->IsLeafPage()) {
     // split
     auto cur_leaf_page = cur_guard.AsMut<LeafPage>();
     auto new_leaf_page = new_split_page_guard.AsMut<LeafPage>();
-    int start = cur_leaf_page->GetSize() >> 1;
-    int len = cur_leaf_page->GetSize() - start;
-    cur_leaf_page->MoveTo(new_leaf_page, start, len, 0);
+    new_leaf_page->Init(leaf_max_size_);
+    cur_leaf_page->SplitTo(new_leaf_page, new_split_page_id);
     // update father
     if (ctx.IsRootPage(cur_guard.PageId())) {
       auto& header_page_guard = ctx.write_set_.back();
@@ -509,9 +509,8 @@ auto BPLUSTREE_TYPE::InsertRecursively(page_id_t page_id_to_fetch, Context &ctx,
     // split
     auto cur_internal_page = cur_guard.AsMut<InternalPage>();
     auto new_internal_page = new_split_page_guard.AsMut<InternalPage>();
-    int start = cur_internal_page->GetSize() >> 1;
-    int len = cur_internal_page->GetSize() - start;
-    cur_internal_page->MoveTo(new_internal_page, start, len, 0);
+    new_internal_page->Init(internal_max_size_);
+    cur_internal_page->SplitTo(new_internal_page);
     // update father
     if (ctx.IsRootPage(cur_guard.PageId())) {
       auto& header_page_guard = ctx.write_set_.back();
