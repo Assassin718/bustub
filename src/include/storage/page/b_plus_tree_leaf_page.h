@@ -2,7 +2,7 @@
  * @Author: ghost 13038089398@163.com
  * @Date: 2023-09-04 22:33:46
  * @LastEditors: ghost 13038089398@163.com
- * @LastEditTime: 2023-10-03 20:00:26
+ * @LastEditTime: 2023-10-06 14:59:24
  * @FilePath: /cmu15445/src/include/storage/page/b_plus_tree_leaf_page.h
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
  */
@@ -67,8 +67,16 @@ class BPlusTreeLeafPage : public BPlusTreePage {
   void SetNextPageId(page_id_t next_page_id);
   auto KeyAt(int index) const -> KeyType;
   auto ValueAt(int index) const ->ValueType;
+  auto PairAt(int index) const -> const MappingType &;
+  void SetPairAt(int index, const MappingType& pair);
   auto InsertAt(const KeyType& key, const ValueType& value, int index) -> bool;
+  // insert
   void SplitTo(BPlusTreeLeafPage<KeyType, ValueType, KeyComparator>* dst, page_id_t dst_page_id);
+  // remove
+  auto BorrowFromLeft(BPlusTreeLeafPage<KeyType, ValueType, KeyComparator>* brother_page_left, int borrow_cnt) -> bool;
+  auto BorrowFromRight(BPlusTreeLeafPage<KeyType, ValueType, KeyComparator>* brother_page_right, int borrow_cnt) -> bool;
+  void MergeToLeft(BPlusTreeLeafPage<KeyType, ValueType, KeyComparator>* brother_page_left);
+  void MergeToRight(BPlusTreeLeafPage<KeyType, ValueType, KeyComparator>* brother_page_right);
 
   /**
    * @brief for test only return a string representing all keys in

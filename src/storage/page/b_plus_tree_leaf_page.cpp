@@ -2,7 +2,7 @@
  * @Author: ghost 13038089398@163.com
  * @Date: 2023-09-06 11:46:19
  * @LastEditors: ghost 13038089398@163.com
- * @LastEditTime: 2023-10-03 20:01:08
+ * @LastEditTime: 2023-10-06 19:26:22
  * @FilePath: /cmu15445/src/storage/page/b_plus_tree_leaf_page.cpp
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
  */
@@ -69,6 +69,15 @@ auto B_PLUS_TREE_LEAF_PAGE_TYPE::ValueAt(int index) const -> ValueType {
   return array_[index].second;
 }
 
+INDEX_TEMPLATE_ARGUMENTS
+auto B_PLUS_TREE_LEAF_PAGE_TYPE::PairAt(int index) const -> const MappingType & {
+  return array_[index];
+}
+
+INDEX_TEMPLATE_ARGUMENTS
+void B_PLUS_TREE_LEAF_PAGE_TYPE::SetPairAt(int index, const MappingType& pair) {
+  array_[index] = pair;
+}
 
 INDEX_TEMPLATE_ARGUMENTS
 auto B_PLUS_TREE_LEAF_PAGE_TYPE::InsertAt(const KeyType& key, const ValueType& value, int index) -> bool {
@@ -99,6 +108,60 @@ void B_PLUS_TREE_LEAF_PAGE_TYPE::SplitTo(BPlusTreeLeafPage<KeyType, ValueType, K
   dst->SetSize(dst_begin);
   dst->SetNextPageId(next_page_id_);
   next_page_id_ = dst_page_id;
+}
+
+
+INDEX_TEMPLATE_ARGUMENTS
+auto B_PLUS_TREE_LEAF_PAGE_TYPE::BorrowFromLeft(BPlusTreeLeafPage<KeyType, ValueType, KeyComparator>* brother_page_left, int borrow_cnt) -> bool {
+  if (brother_page_left->GetSize() < borrow_cnt + GetMinSize()) { return false; }
+  for (int i = GetMinSize() - 1; i >= borrow_cnt; --i) {
+    array_[i] = array_[i - borrow_cnt];
+  }
+  int borrow_index = brother_page_left->GetSize();
+  for (int i = borrow_cnt - 1; i >= 0; --i) {
+    array_[i] = brother_page_left->array_[--borrow_index];
+  }
+  SetSize(GetMinSize());
+  brother_page_left->SetSize(borrow_index);
+  return true;
+}
+
+INDEX_TEMPLATE_ARGUMENTS
+auto B_PLUS_TREE_LEAF_PAGE_TYPE::BorrowFromRight(BPlusTreeLeafPage<KeyType, ValueType, KeyComparator>* brother_page_right, int borrow_cnt) -> bool {
+  if (brother_page_right->GetSize() < borrow_cnt + GetMinSize()) { return false; }
+  int index = GetSize();
+  for (int i = 0; i < borrow_cnt; ++i) {
+    array_[index++] = brother_page_right->array_[i];
+  }
+  int borrow_index = 0;
+  for (int i = borrow_cnt; i < brother_page_right->GetSize(); ++i) {
+    brother_page_right->array_[borrow_index++] = brother_page_right->array_[i];
+  }
+  SetSize(index);
+  brother_page_right->SetSize(borrow_index);
+  return true;
+}
+
+INDEX_TEMPLATE_ARGUMENTS
+void B_PLUS_TREE_LEAF_PAGE_TYPE::MergeToLeft(BPlusTreeLeafPage<KeyType, ValueType, KeyComparator>* brother_page_left) {
+  int merge_index = brother_page_left->GetSize();
+  for (int i = 0; i < GetSize(); ++i) {
+    brother_page_left->array_[merge_index++] = array_[i];
+  }
+  brother_page_left->SetSize(merge_index);
+}
+
+INDEX_TEMPLATE_ARGUMENTS
+void B_PLUS_TREE_LEAF_PAGE_TYPE::MergeToRight(BPlusTreeLeafPage<KeyType, ValueType, KeyComparator>* brother_page_right) {
+  int merge_index = brother_page_right->GetSize() + GetSize();
+  int j = merge_index;
+  for (int i = brother_page_right->GetSize() - 1; i >= 0; --i) {
+    brother_page_right->array_[--j] = brother_page_right->array_[i];
+  }
+  for (int i = GetSize(); i >= 0; i--) {
+    brother_page_right->array_[--j] = array_[i];
+  }
+  brother_page_right->SetSize(merge_index);
 }
 
 template class BPlusTreeLeafPage<GenericKey<4>, RID, GenericComparator<4>>;

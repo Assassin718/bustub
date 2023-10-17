@@ -2,7 +2,7 @@
  * @Author: ghost 13038089398@163.com
  * @Date: 2023-09-06 21:21:03
  * @LastEditors: ghost 13038089398@163.com
- * @LastEditTime: 2023-09-12 14:08:50
+ * @LastEditTime: 2023-10-04 16:12:07
  * @FilePath: /cmu15445/src/storage/page/page_guard.cpp
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
  */
@@ -30,6 +30,9 @@ void BasicPageGuard::Drop() {
 }
 
 auto BasicPageGuard::operator=(BasicPageGuard &&that) noexcept -> BasicPageGuard & { 
+  if (this->bpm_ != nullptr) {
+    bpm_->UnpinPage(PageId(), is_dirty_);
+  }
   bpm_ = that.bpm_;
   page_ = that.page_;
   is_dirty_ = that.is_dirty_;
@@ -48,6 +51,9 @@ ReadPageGuard::ReadPageGuard(ReadPageGuard &&that) noexcept {
 }
 
 auto ReadPageGuard::operator=(ReadPageGuard &&that) noexcept -> ReadPageGuard & { 
+  if (this->guard_.page_ != nullptr) {
+    this->guard_.page_->RUnlatch();
+  }
   this->guard_ = std::move(that.guard_);
   return *this; 
 }
@@ -68,6 +74,9 @@ WritePageGuard::WritePageGuard(WritePageGuard &&that) noexcept {
 }
 
 auto WritePageGuard::operator=(WritePageGuard &&that) noexcept -> WritePageGuard & { 
+  if (this->guard_.page_ != nullptr) {
+    this->guard_.page_->WUnlatch();
+  }
   this->guard_ = std::move(that.guard_);
   return *this; 
 }

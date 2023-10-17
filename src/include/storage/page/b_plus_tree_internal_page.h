@@ -2,7 +2,7 @@
  * @Author: ghost 13038089398@163.com
  * @Date: 2023-09-27 13:46:37
  * @LastEditors: ghost 13038089398@163.com
- * @LastEditTime: 2023-10-03 19:45:43
+ * @LastEditTime: 2023-10-06 19:00:13
  * @FilePath: /cmu15445/mnt/d/project/cmu15445/src/include/storage/page/b_plus_tree_internal_page.h
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
  */
@@ -73,6 +73,14 @@ class BPlusTreeInternalPage : public BPlusTreePage {
   void SetKeyAt(const KeyType& key, int index); 
 
   void SetValueAt(const ValueType& value, int index);
+
+  void RemoveAt(int index);
+
+  // remove
+  auto BorrowFromLeft(BPlusTreeInternalPage<KeyType, ValueType, KeyComparator>* brother_page_left, int borrow_cnt) -> bool;
+  auto BorrowFromRight(BPlusTreeInternalPage<KeyType, ValueType, KeyComparator>* brother_page_right, int borrow_cnt) -> bool;
+  void MergeToLeft(BPlusTreeInternalPage<KeyType, ValueType, KeyComparator>* brother_page_left);
+  void MergeToRight(BPlusTreeInternalPage<KeyType, ValueType, KeyComparator>* brother_page_right);
 
   void SplitTo(BPlusTreeInternalPage<KeyType, ValueType, KeyComparator>* dst);
   /**
